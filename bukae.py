@@ -4,8 +4,8 @@ import win32con
 import time
 import pygetwindow as gw
 
-MAIN_WINDOW_KEYWORD = "dy"
-SUB_WINDOW_KEYWORD = "dj"
+MAIN_WINDOW_KEYWORD = "NA"
+SUB_WINDOW_KEYWORD = "He"
 
 click_sync_enabled = True
 toggle_held = False  # 마우스 버튼 누름 상태 추적 (중복 토글 방지)
