@@ -6,7 +6,7 @@ import win32con
 import pygetwindow as gw
 import threading
 import time
-
+1
 class ClickOverlay(tk.Toplevel):
     def __init__(self, master):
         super().__init__(master)
