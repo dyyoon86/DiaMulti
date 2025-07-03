@@ -31,6 +31,60 @@ def send_click(hwnd, client_x, client_y):
     time.sleep(0.05)
     win32api.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lParam)
 
+def map_click_to_sub_window(main_rect, sub_rect, click_point):
+    """
+    main 창에서 클릭한 위치를 기준으로,
+    sub 창에서 같은 위치(상대적 비율)를 구하여 스크린 절대좌표로 반환
+    """
+    main_left, main_top, main_width, main_height = main_rect
+    sub_left, sub_top, sub_width, sub_height = sub_rect
+    click_x, click_y = click_point
+
+    # 1. 메인 기준 상대 위치
+    rel_x = click_x - main_left
+    rel_y = click_y - main_top
+
+    if rel_x < 0 or rel_y < 0 or rel_x > main_width or rel_y > main_height:
+        print("❌ 클릭이 메인 창을 벗어났습니다.")
+        return None
+
+    # 2. 상대 비율 계산
+    ratio_x = rel_x / main_width
+    ratio_y = rel_y / main_height
+
+    # 3. Sub 창의 동일 비율 위치 (스크린 절대 좌표)
+    sub_click_x = int(sub_left + ratio_x * sub_width)
+    sub_click_y = int(sub_top + ratio_y * sub_height)
+
+    return sub_click_x, sub_click_y
+
+def map_main_click_to_sub_client(main_rect, sub_rect, click_point):
+    """
+    메인창 기준 클릭 위치를 부캐 창 기준 클라이언트 좌표로 변환
+    """
+    main_left, main_top, main_width, main_height = main_rect
+    sub_left, sub_top, sub_width, sub_height = sub_rect
+    click_x, click_y = click_point
+
+    # 1. 메인 기준 상대좌표
+    rel_x = click_x - main_left
+    rel_y = click_y - main_top
+
+    if rel_x < 0 or rel_y < 0 or rel_x > main_width or rel_y > main_height:
+        print("❌ 클릭이 메인 창 영역을 벗어났습니다.")
+        return None
+
+    # 2. 상대 위치의 비율 계산
+    ratio_x = rel_x / main_width
+    ratio_y = rel_y / main_height
+
+    # 3. 부캐창 클라이언트 좌표계 기준으로 환산
+    client_x = int(ratio_x * sub_width)
+    client_y = int(ratio_y * sub_height)
+
+    return client_x, client_y
+
+
 def main():
     global click_sync_enabled, toggle_held
 
@@ -86,7 +140,12 @@ def main():
                 print(f"\n🖱️ 클릭 스크린 좌표: ({click_x}, {click_y})")
                 print(f"📍 상대좌표 (메인 기준): ({rel_x}, {rel_y})")
 
-                sub_client_x, sub_client_y = screen_to_client(sub_hwnd, click_x, click_y)
+                #sub_client_x, sub_client_y = screen_to_client(sub_hwnd, click_x, click_y)
+
+                main_rect = (main_left, main_top, main_width, main_height)
+                sub_rect = (sub_left, sub_top, sub_width, sub_height)
+                click_point = (click_x, click_y)
+                sub_client_x, sub_client_y = map_main_click_to_sub_client(main_rect, sub_rect , click_point )
                 print(f"📐 계산식: ScreenToClient({click_x},{click_y}) => ({sub_client_x},{sub_client_y})")
 
                 send_click(sub_hwnd, sub_client_x, sub_client_y)
@@ -97,3 +156,19 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+"""
+
+ ▶ 클라이언트 좌표 기반 클릭 동기화 시작 (마우스 XBUTTON2로 ON/OFF, Ctrl+C 종료)
+
+ 📐 메인 창 위치: (-7, 0), 크기: 974x1047
+ 📐 부캐 창 위치: (953, 0), 크기: 974x1047
+ 🔁 클릭 동기화 상태: ON
+
+ 🖱️ 클릭 스크린 좌표: (454, 59)
+ 📍 상대좌표 (메인 기준): (461, 59)
+ 📐 계산식: ScreenToClient(454,59) => (-507,59)
+ ✅ 부캐릭 클릭: hwnd=4851256, 클라이언트 좌표=(-507,59)
+
+
+ """
