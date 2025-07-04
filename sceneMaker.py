@@ -37,8 +37,8 @@ def template_match_in_window(img_path, left, top, w, h, threshold=0.85):
 class ScenarioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("시나리오 빌더 & 자동 실행기 (매크로녹화/UI개선)")
-        self.geometry("1100x600")
+        self.title("시나리오 빌더 & 자동 실행기 (wait+매크로+멀티삭제)")
+        self.geometry("1150x640")
         self.resizable(False, False)
         self.win_titles = get_window_list()
         self.var_sel = tk.StringVar(value=self.win_titles[0] if self.win_titles else "")
@@ -107,7 +107,20 @@ class ScenarioApp(tk.Tk):
         self.var_delay_pos = tk.DoubleVar(value=0.5)
         tk.Entry(fpos, textvariable=self.var_delay_pos, width=8).grid(row=1, column=3, padx=2)
         tk.Button(poscard, text="좌표 단계 추가", command=self.add_step_pos, height=2, bg="#d3ffe6").pack(pady=4)
-        # 매크로 녹화 카드
+
+        # --- [wait 단계 추가] 카드 ---
+        waitcard = Frame(center, bd=2, relief="groove", bg="#fff9e7")
+        waitcard.pack(pady=7, fill="x")
+        ttk.Label(waitcard, text="WAIT(대기) 단계 추가", background="#fff9e7",
+                  font=("맑은 고딕", 10, "bold")).pack(anchor="w", padx=10, pady=(6, 2))
+        fwait = Frame(waitcard, bg="#fff9e7")
+        fwait.pack(padx=7, pady=2, fill="x")
+        ttk.Label(fwait, text="대기 시간(초):", background="#fff9e7").grid(row=0, column=0)
+        self.var_wait = tk.DoubleVar(value=1.0)
+        tk.Entry(fwait, textvariable=self.var_wait, width=8).grid(row=0, column=1, padx=2)
+        tk.Button(waitcard, text="wait 단계 추가", command=self.add_step_wait, height=2, bg="#ffeeb0").pack(pady=4)
+
+        # --- [매크로 녹화 카드] ---
         macard = Frame(center, bd=2, relief="groove", bg="#fff8ee")
         macard.pack(pady=7, fill="x")
         ttk.Label(macard, text="마우스 매크로 녹화", background="#fff8ee",
@@ -125,7 +138,7 @@ class ScenarioApp(tk.Tk):
         right.grid(row=0, column=2, sticky="ns")
         ttk.Label(right, text="시나리오 리스트", font=("맑은 고딕", 11, "bold")).pack(anchor="w", pady=3)
         self.scenario = []
-        self.list_scn = tk.Listbox(right, height=27, width=50)
+        self.list_scn = tk.Listbox(right, height=27, width=50, selectmode=tk.EXTENDED)
         self.list_scn.pack(pady=4, padx=2, fill="y")
 
         # 하단: 버튼들
@@ -133,7 +146,7 @@ class ScenarioApp(tk.Tk):
         botbar.pack(fill="x", pady=7)
         tk.Button(botbar, text="▲", command=self.move_up, width=4).pack(side="left", padx=3)
         tk.Button(botbar, text="▼", command=self.move_down, width=4).pack(side="left", padx=3)
-        tk.Button(botbar, text="삭제", command=self.del_step, width=7).pack(side="left", padx=7)
+        tk.Button(botbar, text="삭제", command=self.del_step_multi, width=8, fg="red").pack(side="left", padx=7)
         tk.Button(botbar, text="실행 ▶", command=self.run_scenario, width=12, font=("맑은 고딕", 12), bg="#faffb0").pack(side="right", padx=8)
         tk.Button(botbar, text="저장", command=self.save_scn, width=8).pack(side="right", padx=3)
         tk.Button(botbar, text="불러오기", command=self.load_scn, width=8).pack(side="right", padx=3)
@@ -155,8 +168,7 @@ class ScenarioApp(tk.Tk):
         act = self.var_action_img.get()
         delay = self.var_delay_img.get()
         step = {"type": "img", "img": fname, "action": act, "delay": delay}
-        self.scenario.append(step)
-        self.refresh_scn_list()
+        self._insert_step(step)
 
     def add_step_pos(self):
         x = self.var_x.get()
@@ -164,19 +176,36 @@ class ScenarioApp(tk.Tk):
         act = self.var_action_pos.get()
         delay = self.var_delay_pos.get()
         step = {"type": "pos", "x": x, "y": y, "action": act, "delay": delay}
-        self.scenario.append(step)
+        self._insert_step(step)
+
+    def add_step_wait(self):
+        delay = self.var_wait.get()
+        if delay <= 0:
+            messagebox.showinfo("알림", "대기 시간은 0보다 커야 합니다.")
+            return
+        step = {"type": "wait", "delay": delay}
+        self._insert_step(step)
+
+    def _insert_step(self, step):
+        sel = list(self.list_scn.curselection())
+        if sel:
+            idx = sel[-1] + 1
+            self.scenario.insert(idx, step)
+        else:
+            self.scenario.append(step)
         self.refresh_scn_list()
 
-    def del_step(self):
-        sel = self.list_scn.curselection()
-        if not sel:
+    def del_step_multi(self):
+        selected = list(self.list_scn.curselection())
+        if not selected:
             return
-        idx = sel[0]
-        self.scenario.pop(idx)
+        for idx in reversed(selected):
+            if 0 <= idx < len(self.scenario):
+                self.scenario.pop(idx)
         self.refresh_scn_list()
 
     def move_up(self):
-        sel = self.list_scn.curselection()
+        sel = list(self.list_scn.curselection())
         if not sel or sel[0] == 0:
             return
         idx = sel[0]
@@ -185,7 +214,7 @@ class ScenarioApp(tk.Tk):
         self.list_scn.select_set(idx-1)
 
     def move_down(self):
-        sel = self.list_scn.curselection()
+        sel = list(self.list_scn.curselection())
         if not sel or sel[0] == len(self.scenario)-1:
             return
         idx = sel[0]
@@ -205,6 +234,11 @@ class ScenarioApp(tk.Tk):
                 self.list_scn.insert(
                     tk.END,
                     f"[POS] ({step['x']},{step['y']}) | {step['action']} | {step['delay']}s"
+                )
+            elif step["type"] == "wait":
+                self.list_scn.insert(
+                    tk.END,
+                    f"[WAIT] {round(step['delay'], 3)}s"
                 )
         for idx in range(self.list_scn.size()):
             self.list_scn.itemconfig(idx, bg="white", fg="black")
@@ -274,6 +308,9 @@ class ScenarioApp(tk.Tk):
                     self.do_action(act, fx, fy)
                     ok = True
                     time.sleep(delay)
+                elif step["type"] == "wait":
+                    time.sleep(step["delay"])
+                    ok = True
             except Exception as e:
                 print("예외 발생:", e)
                 messagebox.showerror("실행 중 오류", str(e))
@@ -301,7 +338,8 @@ class ScenarioApp(tk.Tk):
             pyautogui.rightClick()
         else:
             pass
-    # 매크로 녹화 기능
+
+    # === 매크로 녹화 (진짜 멈춤만 wait) ===
     def start_macro_record(self):
         if self.macro_recording:
             messagebox.showinfo("알림", "이미 녹화 중입니다!")
@@ -313,16 +351,14 @@ class ScenarioApp(tk.Tk):
 
         def on_move(x, y):
             now = time.time()
-            dt = now - self.macro_last_time
-            self.macro_events.append({'type': 'move', 'x': x, 'y': y, 'delay': round(dt, 4)})
+            self.macro_events.append({'type': 'move', 'x': x, 'y': y, 'abs_time': now})
             self.macro_last_time = now
 
         def on_click(x, y, button, pressed):
-            if pressed: return  # 클릭 해제 순간만 기록(중복 방지)
+            if pressed: return
             now = time.time()
-            dt = now - self.macro_last_time
             act = 'click' if button.name == 'left' else 'right_click'
-            self.macro_events.append({'type': act, 'x': x, 'y': y, 'delay': round(dt, 4)})
+            self.macro_events.append({'type': act, 'x': x, 'y': y, 'abs_time': now})
             self.macro_last_time = now
 
         self.macro_listener = mouse.Listener(on_move=on_move, on_click=on_click)
@@ -339,34 +375,40 @@ class ScenarioApp(tk.Tk):
         except Exception:
             pass
         self.label_macro.config(text=f"녹화된 액션: {len(self.macro_events)}개", fg="gray")
-        # 개선: move는 마지막만, click/right_click만 진짜 반영
+
         filtered = []
-        last_move = None
-        for ev in self.macro_events:
+        WAIT_THRESHOLD = 0.15  # 0.15초 이상 멈춘 경우만 wait
+        last_time = None
+
+        for idx, ev in enumerate(self.macro_events):
+            now = ev['abs_time']
+            if last_time is not None:
+                gap = now - last_time
+                if gap > WAIT_THRESHOLD:
+                    filtered.append({"type": "wait", "delay": gap})
+            # move는 연속 마지막만 남기고, click/right_click은 모두 남김
             if ev["type"] == "move":
-                last_move = ev
-            elif ev["type"] in ("click", "right_click"):
-                # 마지막 move 위치와 click위치가 다르면 move 먼저 넣음
-                if last_move:
+                if idx+1 == len(self.macro_events) or self.macro_events[idx+1]["type"] != "move":
                     filtered.append({
                         "type": "pos",
-                        "x": last_move["x"],
-                        "y": last_move["y"],
+                        "x": ev["x"],
+                        "y": ev["y"],
                         "action": "move",
-                        "delay": last_move["delay"]
+                        "delay": 0
                     })
-                    last_move = None
+            elif ev["type"] in ("click", "right_click"):
                 filtered.append({
                     "type": "pos",
                     "x": ev["x"],
                     "y": ev["y"],
                     "action": ev["type"],
-                    "delay": ev["delay"]
+                    "delay": 0
                 })
+            last_time = now
+
         self.scenario += filtered
         self.refresh_scn_list()
-        messagebox.showinfo("녹화 완료", f"마우스 동작 {len(filtered)}개가 시나리오에 추가되었습니다.\n(좌표단계로 변환)")
-
+        messagebox.showinfo("녹화 완료", f"손을 멈춘 시간만 wait, move 중복 없음, click/우클릭 반영됨!\n({len(filtered)}개 단계)")
 
     def quit(self):
         try:
