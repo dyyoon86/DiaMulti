@@ -1,0 +1,53 @@
+#include <Mouse.h>
+
+// dx, dy가 127보다 크면 쪼개서 반복 이동 (마우스.move는 -127~+127 범위만 지원)
+void moveMouseSmooth(int dx, int dy) {
+  while (dx != 0 || dy != 0) {
+    int stepX = 0;
+    int stepY = 0;
+
+    // x축 분할
+    if (dx > 127) stepX = 127;
+    else if (dx < -127) stepX = -127;
+    else stepX = dx;
+
+    // y축 분할
+    if (dy > 127) stepY = 127;
+    else if (dy < -127) stepY = -127;
+    else stepY = dy;
+
+    // 실제 이동
+    Mouse.move(stepX, stepY, 0);
+
+    // 이동량 누적 소진
+    dx -= stepX;
+    dy -= stepY;
+
+    delay(3); // 너무 빠르면 OS에서 놓칠 수 있어 짧은 대기 (3ms 추천, 1~5ms 범위 튜닝)
+  }
+}
+
+void setup() {
+  Serial.begin(9600);   // PC와 시리얼 통신
+  Mouse.begin();        // 마우스 에뮬 시작
+}
+
+void loop() {
+  // 파이썬에서 "dx,dy\n" 형태로 메시지 수신
+  if (Serial.available()) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    int commaIdx = input.indexOf(',');
+    if (commaIdx > 0) {
+      int dx = input.substring(0, commaIdx).toInt();
+      int dy = input.substring(commaIdx + 1).toInt();
+
+      // 이동(멀리면 여러 번 분할 이동)
+      moveMouseSmooth(dx, dy);
+
+      delay(20); // 마우스 이동 후 잠시 대기(안정성, 너무 줄이면 클릭이 씹힐 수도)
+      Mouse.click(MOUSE_LEFT); // 왼쪽 클릭
+      Serial.println("OK");    // PC로 응답(옵션)
+    }
+  }
+}
