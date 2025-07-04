@@ -339,24 +339,34 @@ class ScenarioApp(tk.Tk):
         except Exception:
             pass
         self.label_macro.config(text=f"녹화된 액션: {len(self.macro_events)}개", fg="gray")
-        # macro_events -> scenario 단계로 변환
+        # 개선: move는 마지막만, click/right_click만 진짜 반영
         filtered = []
-        last_pos = None
+        last_move = None
         for ev in self.macro_events:
             if ev["type"] == "move":
-                last_pos = (ev["x"], ev["y"])
+                last_move = ev
             elif ev["type"] in ("click", "right_click"):
-                # move 직후 click/right_click일 때만 move 단계 추가
-                if last_pos:
-                    filtered.append({"type": "pos", "x": last_pos[0], "y": last_pos[1],
-                                     "action": "move", "delay": ev["delay"]})
-                    last_pos = None
-                filtered.append({"type": "pos", "x": ev["x"], "y": ev["y"],
-                                 "action": ev["type"], "delay": 0.02})
-        # 마지막 move만 남는 것 방지
+                # 마지막 move 위치와 click위치가 다르면 move 먼저 넣음
+                if last_move:
+                    filtered.append({
+                        "type": "pos",
+                        "x": last_move["x"],
+                        "y": last_move["y"],
+                        "action": "move",
+                        "delay": last_move["delay"]
+                    })
+                    last_move = None
+                filtered.append({
+                    "type": "pos",
+                    "x": ev["x"],
+                    "y": ev["y"],
+                    "action": ev["type"],
+                    "delay": ev["delay"]
+                })
         self.scenario += filtered
         self.refresh_scn_list()
         messagebox.showinfo("녹화 완료", f"마우스 동작 {len(filtered)}개가 시나리오에 추가되었습니다.\n(좌표단계로 변환)")
+
 
     def quit(self):
         try:
