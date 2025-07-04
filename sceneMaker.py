@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, simpledialog, messagebox
+from tkinter import ttk, filedialog, messagebox, Frame
 import pygetwindow as gw
 import pyautogui
 import cv2
@@ -7,6 +7,7 @@ import numpy as np
 import os
 import json
 import time
+from pynput import mouse
 
 IMG_DIR = "img"
 
@@ -36,60 +37,133 @@ def template_match_in_window(img_path, left, top, w, h, threshold=0.85):
 class ScenarioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("시나리오 빌더 & 자동 실행기")
-        self.geometry("800x400")
+        self.title("시나리오 빌더 & 자동 실행기 (매크로녹화/UI개선)")
+        self.geometry("1100x600")
+        self.resizable(False, False)
         self.win_titles = get_window_list()
         self.var_sel = tk.StringVar(value=self.win_titles[0] if self.win_titles else "")
-        ttk.Label(self, text="대상 창 선택:").grid(row=0, column=0, padx=8)
-        self.combo = ttk.Combobox(self, textvariable=self.var_sel, values=self.win_titles, width=50)
-        self.combo.grid(row=0, column=1, columnspan=3, sticky="ew", pady=4)
 
-        # 이미지 리스트
-        self.img_files = [f for f in os.listdir(IMG_DIR) if f.lower().endswith(".png")]
-        ttk.Label(self, text="img/ 이미지 목록").grid(row=1, column=0)
-        self.list_img = tk.Listbox(self, height=16, width=36)
+        # 최상단: 창 선택
+        topbar = Frame(self)
+        topbar.pack(fill="x", padx=8, pady=5)
+        ttk.Label(topbar, text="대상 창 선택:", font=("맑은 고딕", 11)).pack(side="left")
+        self.combo = ttk.Combobox(topbar, textvariable=self.var_sel, values=self.win_titles, width=45)
+        self.combo.pack(side="left", padx=5)
+
+        # 전체 그리드: 좌(이미지) - 중간(입력/추가) - 우(시나리오)
+        mainframe = Frame(self)
+        mainframe.pack(fill="both", expand=True, padx=8, pady=8)
+
+        # 1. 좌측: 이미지 리스트
+        left = Frame(mainframe)
+        left.grid(row=0, column=0, sticky="ns")
+        ttk.Label(left, text="이미지 목록 (img/)", font=("맑은 고딕", 11, "bold")).pack(anchor="w", pady=3)
+        self.img_files = [f for f in os.listdir(IMG_DIR) if f.lower().endswith(".png")] if os.path.exists(IMG_DIR) else []
+        self.list_img = tk.Listbox(left, height=27, width=30)
         for f in self.img_files:
             self.list_img.insert(tk.END, f)
-        self.list_img.grid(row=2, column=0, rowspan=4, padx=8, pady=8)
+        self.list_img.pack(pady=4, padx=2, fill="y")
 
-        # 시나리오 리스트
-        ttk.Label(self, text="시나리오 단계").grid(row=1, column=2)
+        # 2. 중앙: 입력/추가 영역 (카드 스타일)
+        center = Frame(mainframe)
+        center.grid(row=0, column=1, padx=14, sticky="ns")
+
+        # 이미지 감지 카드
+        imgcard = Frame(center, bd=2, relief="groove", bg="#f8f8ff")
+        imgcard.pack(pady=7, fill="x")
+        ttk.Label(imgcard, text="이미지 감지 단계 추가", background="#f8f8ff",
+                  font=("맑은 고딕", 10, "bold")).pack(anchor="w", padx=10, pady=(6, 2))
+        fimg = Frame(imgcard, bg="#f8f8ff")
+        fimg.pack(padx=7, pady=2, fill="x")
+        ttk.Label(fimg, text="액션:", background="#f8f8ff").grid(row=0, column=0, padx=2)
+        self.var_action_img = tk.StringVar(value="move")
+        self.combo_action_img = ttk.Combobox(fimg, textvariable=self.var_action_img,
+                                             values=["move", "click", "right_click", "move+click", "move+right_click"], width=15)
+        self.combo_action_img.grid(row=0, column=1, padx=2)
+        ttk.Label(fimg, text="딜레이(초):", background="#f8f8ff").grid(row=0, column=2, padx=2)
+        self.var_delay_img = tk.DoubleVar(value=0.5)
+        tk.Entry(fimg, textvariable=self.var_delay_img, width=8).grid(row=0, column=3, padx=2)
+        tk.Button(imgcard, text="이미지 단계 추가", command=self.add_step_img, height=2, bg="#e6ecff").pack(pady=4)
+
+        # 좌표 카드
+        poscard = Frame(center, bd=2, relief="groove", bg="#f8fff8")
+        poscard.pack(pady=7, fill="x")
+        ttk.Label(poscard, text="좌표 단계 추가", background="#f8fff8",
+                  font=("맑은 고딕", 10, "bold")).pack(anchor="w", padx=10, pady=(6, 2))
+        fpos = Frame(poscard, bg="#f8fff8")
+        fpos.pack(padx=7, pady=2, fill="x")
+        ttk.Label(fpos, text="X:", background="#f8fff8").grid(row=0, column=0)
+        self.var_x = tk.IntVar(value=0)
+        tk.Entry(fpos, textvariable=self.var_x, width=8).grid(row=0, column=1, padx=2)
+        ttk.Label(fpos, text="Y:", background="#f8fff8").grid(row=0, column=2)
+        self.var_y = tk.IntVar(value=0)
+        tk.Entry(fpos, textvariable=self.var_y, width=8).grid(row=0, column=3, padx=2)
+        ttk.Label(fpos, text="액션:", background="#f8fff8").grid(row=1, column=0)
+        self.var_action_pos = tk.StringVar(value="move")
+        self.combo_action_pos = ttk.Combobox(fpos, textvariable=self.var_action_pos,
+                                             values=["move", "click", "right_click", "move+click", "move+right_click"], width=15)
+        self.combo_action_pos.grid(row=1, column=1)
+        ttk.Label(fpos, text="딜레이(초):", background="#f8fff8").grid(row=1, column=2)
+        self.var_delay_pos = tk.DoubleVar(value=0.5)
+        tk.Entry(fpos, textvariable=self.var_delay_pos, width=8).grid(row=1, column=3, padx=2)
+        tk.Button(poscard, text="좌표 단계 추가", command=self.add_step_pos, height=2, bg="#d3ffe6").pack(pady=4)
+        # 매크로 녹화 카드
+        macard = Frame(center, bd=2, relief="groove", bg="#fff8ee")
+        macard.pack(pady=7, fill="x")
+        ttk.Label(macard, text="마우스 매크로 녹화", background="#fff8ee",
+                  font=("맑은 고딕", 10, "bold")).pack(anchor="w", padx=10, pady=(6, 2))
+        Frame(macard, height=1, bg="#ffe0b2").pack(fill="x", padx=7, pady=2)
+        mbtn = Frame(macard, bg="#fff8ee")
+        mbtn.pack(pady=2, fill="x")
+        tk.Button(mbtn, text="🟢 녹화 시작", command=self.start_macro_record, width=11, bg="#ffe6d6").pack(side="left", padx=6)
+        tk.Button(mbtn, text="⏹️ 중지/반영", command=self.stop_macro_record, width=11, bg="#ffe6d6").pack(side="left", padx=6)
+        self.label_macro = tk.Label(macard, text="매크로: 준비됨", fg="gray", background="#fff8ee", font=("맑은 고딕", 9))
+        self.label_macro.pack(anchor="w", padx=10, pady=3)
+
+        # 3. 우측: 시나리오 리스트
+        right = Frame(mainframe)
+        right.grid(row=0, column=2, sticky="ns")
+        ttk.Label(right, text="시나리오 리스트", font=("맑은 고딕", 11, "bold")).pack(anchor="w", pady=3)
         self.scenario = []
-        self.list_scn = tk.Listbox(self, height=16, width=45)
-        self.list_scn.grid(row=2, column=2, rowspan=4, padx=8, pady=8)
+        self.list_scn = tk.Listbox(right, height=27, width=50)
+        self.list_scn.pack(pady=4, padx=2, fill="y")
 
-        # 행동 선택
-        self.var_action = tk.StringVar(value="move")
-        self.combo_action = ttk.Combobox(self, textvariable=self.var_action, values=["move", "move+click"], width=14)
-        self.combo_action.grid(row=2, column=1, sticky="n", padx=2)
-        # 딜레이 입력
-        self.var_delay = tk.DoubleVar(value=0.5)
-        ttk.Label(self, text="딜레이(초):").grid(row=3, column=1, sticky="w")
-        tk.Entry(self, textvariable=self.var_delay, width=8).grid(row=3, column=1, sticky="e")
-
-        # 추가/삭제/순서변경
-        tk.Button(self, text="추가", command=self.add_step).grid(row=4, column=1, pady=2)
-        tk.Button(self, text="삭제", command=self.del_step).grid(row=5, column=1, pady=2)
-        tk.Button(self, text="▲", command=self.move_up).grid(row=4, column=3)
-        tk.Button(self, text="▼", command=self.move_down).grid(row=5, column=3)
-
-        # 저장/불러오기
-        tk.Button(self, text="저장", command=self.save_scn).grid(row=6, column=2, sticky="e", padx=8)
-        tk.Button(self, text="불러오기", command=self.load_scn).grid(row=6, column=2, sticky="w", padx=8)
-        # 실행 버튼
-        tk.Button(self, text="실행 ▶", command=self.run_scenario, font=("Arial", 14), bg="yellow").grid(row=6, column=0, pady=4)
+        # 하단: 버튼들
+        botbar = Frame(self)
+        botbar.pack(fill="x", pady=7)
+        tk.Button(botbar, text="▲", command=self.move_up, width=4).pack(side="left", padx=3)
+        tk.Button(botbar, text="▼", command=self.move_down, width=4).pack(side="left", padx=3)
+        tk.Button(botbar, text="삭제", command=self.del_step, width=7).pack(side="left", padx=7)
+        tk.Button(botbar, text="실행 ▶", command=self.run_scenario, width=12, font=("맑은 고딕", 12), bg="#faffb0").pack(side="right", padx=8)
+        tk.Button(botbar, text="저장", command=self.save_scn, width=8).pack(side="right", padx=3)
+        tk.Button(botbar, text="불러오기", command=self.load_scn, width=8).pack(side="right", padx=3)
 
         self.protocol("WM_DELETE_WINDOW", self.quit)
 
-    def add_step(self):
+        # 매크로 녹화 상태
+        self.macro_recording = False
+        self.macro_events = []
+        self.macro_listener = None
+        self.macro_last_time = None
+
+    def add_step_img(self):
         sel = self.list_img.curselection()
         if not sel:
             messagebox.showinfo("알림", "이미지 선택 후 추가하세요!")
             return
         fname = self.img_files[sel[0]]
-        act = self.var_action.get()
-        delay = self.var_delay.get()
-        step = {"img": fname, "action": act, "delay": delay}
+        act = self.var_action_img.get()
+        delay = self.var_delay_img.get()
+        step = {"type": "img", "img": fname, "action": act, "delay": delay}
+        self.scenario.append(step)
+        self.refresh_scn_list()
+
+    def add_step_pos(self):
+        x = self.var_x.get()
+        y = self.var_y.get()
+        act = self.var_action_pos.get()
+        delay = self.var_delay_pos.get()
+        step = {"type": "pos", "x": x, "y": y, "action": act, "delay": delay}
         self.scenario.append(step)
         self.refresh_scn_list()
 
@@ -122,7 +196,18 @@ class ScenarioApp(tk.Tk):
     def refresh_scn_list(self):
         self.list_scn.delete(0, tk.END)
         for step in self.scenario:
-            self.list_scn.insert(tk.END, f"{step['img']} | {step['action']} | {step['delay']}s")
+            if step["type"] == "img":
+                self.list_scn.insert(
+                    tk.END,
+                    f"[IMG] {step['img']} | {step['action']} | {step['delay']}s"
+                )
+            elif step["type"] == "pos":
+                self.list_scn.insert(
+                    tk.END,
+                    f"[POS] ({step['x']},{step['y']}) | {step['action']} | {step['delay']}s"
+                )
+        for idx in range(self.list_scn.size()):
+            self.list_scn.itemconfig(idx, bg="white", fg="black")
 
     def save_scn(self):
         fp = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
@@ -153,27 +238,133 @@ class ScenarioApp(tk.Tk):
         if not self.scenario:
             messagebox.showinfo("에러", "실행할 시나리오가 없습니다!")
             return
+
+        for idx in range(self.list_scn.size()):
+            self.list_scn.itemconfig(idx, bg="white", fg="black")
+
         for i, step in enumerate(self.scenario):
-            img_path = os.path.join(IMG_DIR, step["img"])
-            act = step["action"]
-            delay = step["delay"]
-            print(f"[{i+1}/{len(self.scenario)}] {step['img']} 템플릿 감지중...")
-            result = template_match_in_window(img_path, left, top, w, h, threshold=0.85)
-            if result:
-                fx, fy, conf = result
-                print(f" → {act.upper()} ({fx},{fy}) | 신뢰도: {conf:.2f}")
-                pyautogui.moveTo(fx, fy, duration=0)
-                if act == "move+click":
-                    pyautogui.click()
-                time.sleep(delay)
-            else:
-                print(" → 감지 실패. 대기 중...")
-                time.sleep(delay)
+            self.list_scn.selection_clear(0, tk.END)
+            self.list_scn.selection_set(i)
+            self.list_scn.activate(i)
+            self.list_scn.see(i)
+            self.list_scn.itemconfig(i, bg='yellow', fg='black')
+            self.update_idletasks()
+
+            ok = False
+            try:
+                if step["type"] == "img":
+                    img_path = os.path.join(IMG_DIR, step["img"])
+                    act = step["action"]
+                    delay = step["delay"]
+                    result = template_match_in_window(img_path, left, top, w, h, threshold=0.85)
+                    if result:
+                        fx, fy, conf = result
+                        self.do_action(act, fx, fy)
+                        ok = True
+                    else:
+                        self.list_scn.itemconfig(i, bg='#ff5555', fg="black")
+                        self.update_idletasks()
+                        messagebox.showerror("감지 실패", f"단계 {i+1}: {step['img']} 이미지를 창에서 감지하지 못했습니다.\n시나리오를 중단합니다.")
+                        return
+                    time.sleep(delay)
+                elif step["type"] == "pos":
+                    act = step["action"]
+                    delay = step["delay"]
+                    fx, fy = step["x"], step["y"]
+                    self.do_action(act, fx, fy)
+                    ok = True
+                    time.sleep(delay)
+            except Exception as e:
+                print("예외 발생:", e)
+                messagebox.showerror("실행 중 오류", str(e))
+                return
+
+            if ok:
+                self.list_scn.itemconfig(i, bg='#cccccc', fg="black")
+                self.update_idletasks()
         messagebox.showinfo("완료", f"시나리오 자동 실행 완료!")
 
+    def do_action(self, act, fx, fy):
+        if act == "move":
+            pyautogui.moveTo(fx, fy, duration=0)
+        elif act == "click":
+            pyautogui.moveTo(fx, fy, duration=0)
+            pyautogui.click()
+        elif act == "right_click":
+            pyautogui.moveTo(fx, fy, duration=0)
+            pyautogui.rightClick()
+        elif act == "move+click":
+            pyautogui.moveTo(fx, fy, duration=0)
+            pyautogui.click()
+        elif act == "move+right_click":
+            pyautogui.moveTo(fx, fy, duration=0)
+            pyautogui.rightClick()
+        else:
+            pass
+    # 매크로 녹화 기능
+    def start_macro_record(self):
+        if self.macro_recording:
+            messagebox.showinfo("알림", "이미 녹화 중입니다!")
+            return
+        self.label_macro.config(text="녹화 중: 마우스 이동/클릭/우클릭 기록됨", fg="red")
+        self.macro_recording = True
+        self.macro_events = []
+        self.macro_last_time = time.time()
+
+        def on_move(x, y):
+            now = time.time()
+            dt = now - self.macro_last_time
+            self.macro_events.append({'type': 'move', 'x': x, 'y': y, 'delay': round(dt, 4)})
+            self.macro_last_time = now
+
+        def on_click(x, y, button, pressed):
+            if pressed: return  # 클릭 해제 순간만 기록(중복 방지)
+            now = time.time()
+            dt = now - self.macro_last_time
+            act = 'click' if button.name == 'left' else 'right_click'
+            self.macro_events.append({'type': act, 'x': x, 'y': y, 'delay': round(dt, 4)})
+            self.macro_last_time = now
+
+        self.macro_listener = mouse.Listener(on_move=on_move, on_click=on_click)
+        self.macro_listener.start()
+
+    def stop_macro_record(self):
+        if not self.macro_recording:
+            messagebox.showinfo("알림", "녹화를 먼저 시작하세요!")
+            return
+        self.macro_recording = False
+        try:
+            if self.macro_listener:
+                self.macro_listener.stop()
+        except Exception:
+            pass
+        self.label_macro.config(text=f"녹화된 액션: {len(self.macro_events)}개", fg="gray")
+        # macro_events -> scenario 단계로 변환
+        filtered = []
+        last_pos = None
+        for ev in self.macro_events:
+            if ev["type"] == "move":
+                last_pos = (ev["x"], ev["y"])
+            elif ev["type"] in ("click", "right_click"):
+                # move 직후 click/right_click일 때만 move 단계 추가
+                if last_pos:
+                    filtered.append({"type": "pos", "x": last_pos[0], "y": last_pos[1],
+                                     "action": "move", "delay": ev["delay"]})
+                    last_pos = None
+                filtered.append({"type": "pos", "x": ev["x"], "y": ev["y"],
+                                 "action": ev["type"], "delay": 0.02})
+        # 마지막 move만 남는 것 방지
+        self.scenario += filtered
+        self.refresh_scn_list()
+        messagebox.showinfo("녹화 완료", f"마우스 동작 {len(filtered)}개가 시나리오에 추가되었습니다.\n(좌표단계로 변환)")
+
     def quit(self):
+        try:
+            if hasattr(self, "macro_listener") and self.macro_listener:
+                self.macro_listener.stop()
+        except Exception:
+            pass
         self.destroy()
-        os._exit(0)
 
 if __name__ == "__main__":
     if not os.path.exists(IMG_DIR):
